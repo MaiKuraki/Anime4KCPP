@@ -16,9 +16,9 @@
 
 struct Upscaler::UpscalerData
 {
-    int processorType = ac::core::Processor::CPU;
     int device = 0;
     double factor = 2.0;
+    QString processorType{};
     QString model{};
     std::shared_ptr<ac::core::Processor> processor{};
     std::atomic_bool stopFlag = false;
@@ -30,16 +30,9 @@ Upscaler& Upscaler::instance() noexcept
     static Upscaler upscaler{};
     return upscaler;
 }
-QString Upscaler::info()
+QString& Upscaler::listProcessorInfo()
 {
-    QString buffer{};
-    buffer.append(ac::core::Processor::info<ac::core::Processor::CPU>());
-#ifdef AC_CORE_WITH_OPENCL
-    buffer.append(ac::core::Processor::info<ac::core::Processor::OpenCL>());
-#endif
-#ifdef AC_CORE_WITH_CUDA
-    buffer.append(ac::core::Processor::info<ac::core::Processor::CUDA>());
-#endif
+    static QString buffer{ ac::core::Processor::listInfo() };
     return buffer;
 }
 
@@ -49,12 +42,15 @@ Upscaler::~Upscaler() noexcept = default;
 void Upscaler::start(const QList<QSharedPointer<TaskData>>& taskList)
 {
     if (dptr->total.load(std::memory_order_relaxed)) return;
-    dptr->device = gConfig.upscaler.device;
     dptr->factor = gConfig.upscaler.factor;
-    dptr->model = gConfig.upscaler.model;
 
-    int processorType = ac::core::Processor::type(gConfig.upscaler.processor.toLocal8Bit());
-    if (!dptr->processor || dptr->processorType != processorType) dptr->processor = ac::core::Processor::create(dptr->processorType = processorType, dptr->device, dptr->model.toLocal8Bit());
+    if (!dptr->processor || dptr->device != gConfig.upscaler.device || dptr->processorType != gConfig.upscaler.processor || dptr->model != gConfig.upscaler.model)
+    {
+        dptr->processor = ac::core::Processor::create(gConfig.upscaler.processor.toLocal8Bit(), gConfig.upscaler.device, gConfig.upscaler.model.toLocal8Bit());
+        dptr->device = gConfig.upscaler.device;
+        dptr->processorType = gConfig.upscaler.processor;
+        dptr->model = gConfig.upscaler.model;
+    }
     if (!dptr->processor->ok())
     {
         gLogger.error() << dptr->processor->error();
@@ -69,7 +65,7 @@ void Upscaler::start(const QList<QSharedPointer<TaskData>>& taskList)
 
     QList<QSharedPointer<TaskData>> imageTaskList;
     QList<QSharedPointer<TaskData>> videoTaskList;
-    for(auto&& task : taskList)
+    for (auto&& task : taskList)
     {
         if (task->type == TaskData::TYPE_IMAGE)
             imageTaskList << task;
@@ -78,13 +74,13 @@ void Upscaler::start(const QList<QSharedPointer<TaskData>>& taskList)
     }
 
     static auto threads = ac::util::ThreadPool::hardwareThreads();
-    static ac::util::ThreadPool pool{ dptr->processorType == ac::core::Processor::CPU ? threads / 4 + 1 : threads / 2 + 1 };
+    static ac::util::ThreadPool pool{ dptr->processor->type() == ac::core::Processor::CPU ? threads / 4 + 1 : threads / 2 + 1 };
 
 #ifdef AC_CLI_ENABLE_VIDEO
     pool.exec([=](){
-        auto decoder =  gConfig.video.decoder.toLocal8Bit();
-        auto format =  gConfig.video.format.toLocal8Bit();
-        auto encoder =  gConfig.video.encoder.toLocal8Bit();
+        auto decoder = gConfig.video.decoder.toLocal8Bit();
+        auto format = gConfig.video.format.toLocal8Bit();
+        auto encoder = gConfig.video.encoder.toLocal8Bit();
         auto bitrate = gConfig.video.bitrate * 1000;
 
         ac::video::DecoderHints dhints{};
@@ -105,13 +101,13 @@ void Upscaler::start(const QList<QSharedPointer<TaskData>>& taskList)
                 gLogger.info() << "Load video from " << task->path.input;
                 if (!pipeline.openDecoder(task->path.input.toUtf8(), dhints)) // ffmpeg api uses utf8 for io
                 {
-                    gLogger.error() << task->path.input <<": Failed to open decoder";
+                    gLogger.error() << task->path.input << ": Failed to open decoder";
                     emit task->finished(false);
                     continue;
                 }
                 if (!pipeline.openEncoder(task->path.output.toUtf8(), dptr->factor, ehints))
                 {
-                    gLogger.error() << task->path.input <<": Failed to open encoder";
+                    gLogger.error() << task->path.input << ": Failed to open encoder";
                     emit task->finished(false);
                     continue;
                 }
@@ -127,7 +123,7 @@ void Upscaler::start(const QList<QSharedPointer<TaskData>>& taskList)
                     std::atomic<const char*> error;
                 } data {
                     dptr->stopFlag,
-                    info.bitDepth.lsb ? ((info.bitDepth.bits - 1) / 8 + 1) * 8 - info.bitDepth.bits : 0, // bytes * 8 - bits
+                    info.bitDepth.lsb ? ((info.bitDepth.bits + 7) / 8 * 8 - info.bitDepth.bits) : 0, // bytes * 8 - bits
                     dptr->factor,
                     info.fps * info.duration,
                     this,
@@ -138,8 +134,8 @@ void Upscaler::start(const QList<QSharedPointer<TaskData>>& taskList)
                 ac::video::filter(pipeline, [](ac::video::Frame& src, ac::video::Frame& dst, void* userdata) -> bool {
                     auto ctx = static_cast<decltype(data)*>(userdata);
                     // y
-                    ac::core::Image srcy{src.plane[0].width, src.plane[0].height, 1, src.elementType, src.plane[0].data, src.plane[0].stride};
-                    ac::core::Image dsty{dst.plane[0].width, dst.plane[0].height, 1, dst.elementType, dst.plane[0].data, dst.plane[0].stride};
+                    ac::core::Image srcy{ src.plane[0].width, src.plane[0].height, 1, src.elementType, src.plane[0].data, src.plane[0].stride };
+                    ac::core::Image dsty{ dst.plane[0].width, dst.plane[0].height, 1, dst.elementType, dst.plane[0].data, dst.plane[0].stride };
                     if (ctx->shift) ac::core::shl(srcy, srcy, ctx->shift); // the src frame is decoded from ffmpeg and cannot be directly modified
                     ctx->processor->process(srcy, dsty, ctx->factor);
                     if (!ctx->processor->ok())
@@ -151,8 +147,8 @@ void Upscaler::start(const QList<QSharedPointer<TaskData>>& taskList)
                     // uv
                     for (int i = 1; i < src.planes; i++)
                     {
-                        ac::core::Image srcp{src.plane[i].width, src.plane[i].height, src.plane[i].channel, src.elementType, src.plane[i].data, src.plane[i].stride};
-                        ac::core::Image dstp{dst.plane[i].width, dst.plane[i].height, dst.plane[i].channel, dst.elementType, dst.plane[i].data, dst.plane[i].stride};
+                        ac::core::Image srcp{ src.plane[i].width, src.plane[i].height, src.plane[i].channel, src.elementType, src.plane[i].data, src.plane[i].stride };
+                        ac::core::Image dstp{ dst.plane[i].width, dst.plane[i].height, dst.plane[i].channel, dst.elementType, dst.plane[i].data, dst.plane[i].stride };
                         ac::core::resize(srcp, dstp, 0.0, 0.0);
                     }
                     if (src.number % 32 == 0) emit ctx->upscaler->progress(static_cast<int>(100 * src.number / ctx->frames));
@@ -166,7 +162,7 @@ void Upscaler::start(const QList<QSharedPointer<TaskData>>& taskList)
                 stopwatch.stop();
                 pipeline.close();
                 if (data.error.load(std::memory_order_relaxed)) gLogger.error() << task->path.input << ": Failed due to " << data.error.load(std::memory_order_relaxed);
-                else gLogger.info() << task->path.input <<": Finished in " << stopwatch.elapsed() << "s [" << gConfig.upscaler.processor << ' ' << dptr->processor->name() << ']';
+                else gLogger.info() << task->path.input << ": Finished in " << stopwatch.elapsed() << "s [" << dptr->processor->typeName() << ' ' << dptr->processor->name() << ']';
                 gLogger.info() << "Save video to " << task->path.output;
             }
             emit progress(100);
@@ -174,9 +170,9 @@ void Upscaler::start(const QList<QSharedPointer<TaskData>>& taskList)
         }
     });
 #else
+    gLogger.warning() << "This build does not support video processing";
     for (auto&& task : videoTaskList)
     {
-        gLogger.warning() << "This build does not support video processing";
         emit task->finished(false);
         if (dptr->total.fetch_sub(1, std::memory_order_relaxed) == 1) emit stopped();
     }
@@ -184,7 +180,7 @@ void Upscaler::start(const QList<QSharedPointer<TaskData>>& taskList)
 
     for (auto&& task : imageTaskList)
     {
-        pool.exec([=](){
+        pool.exec([=]() {
             ac::util::Defer defer([this]() { if (dptr->total.fetch_sub(1, std::memory_order_relaxed) == 1) emit stopped(); });
             if (!dptr->stopFlag.load(std::memory_order_relaxed))
             {
@@ -207,7 +203,7 @@ void Upscaler::start(const QList<QSharedPointer<TaskData>>& taskList)
                     emit task->finished(false);
                     return;
                 }
-                gLogger.info() << task->path.input <<": Finished in " << stopwatch.elapsed() << "s [" << gConfig.upscaler.processor << ' ' << dptr->processor->name() << ']';
+                gLogger.info() << task->path.input << ": Finished in " << stopwatch.elapsed() << "s [" << dptr->processor->typeName() << ' ' << dptr->processor->name() << ']';
 
                 if (ac::core::imwrite(task->path.output.toLocal8Bit(), dst)) gLogger.info() << "Save image to " << task->path.output;
                 else

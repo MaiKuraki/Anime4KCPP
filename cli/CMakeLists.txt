@@ -1,4 +1,4 @@
-project(ac_cli VERSION 3.0.0.0 LANGUAGES CXX)
+project(ac_cli VERSION 3.1.0.0 LANGUAGES CXX)
 
 set(CLI_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(CLI_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
@@ -26,13 +26,9 @@ target_compile_definitions(ac_cli PRIVATE
     $<$<TARGET_EXISTS:ac_video>:AC_CLI_ENABLE_VIDEO>
 )
 
-if(EMSCRIPTEN)
-    target_link_options(ac_cli PRIVATE -sNODERAWFS=1) # allow access to files on disk in NodeJS
-endif()
-
 ac_check_enable_static_crt(ac_cli)
 
 install(
     TARGETS ac_cli
-    RUNTIME DESTINATION bin
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )

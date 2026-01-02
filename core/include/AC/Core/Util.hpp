@@ -14,40 +14,114 @@
 
 namespace ac::core
 {
-    // align v to a multiple of n, and n must a power of 2
+    struct ResidualArg
+    {
+        const Image& image;
+        float scale;
+    };
+
+    constexpr float identity(float v) noexcept;
+    constexpr float relu(float v) noexcept;
+    constexpr float lrelu(float v, float n) noexcept;
+
+    class Identity
+    {
+    public:
+        constexpr Identity() noexcept = default;
+        float operator() (const float v) const noexcept { return identity(v); }
+    };
+    class ReLU
+    {
+    public:
+        constexpr ReLU() noexcept = default;
+        float operator() (const float v) const noexcept { return relu(v); }
+    };
+    class LReLU
+    {
+    public:
+        constexpr LReLU(const float negativeSlope) noexcept : negativeSlope(negativeSlope) {}
+        float operator() (const float v) const noexcept { return lrelu(v, negativeSlope); }
+
+    private:
+        const float negativeSlope;
+    };
+
+    /**
+     * @brief Align a value to a multiple of a power-of-two boundary.
+     *
+     * This function rounds up the input value `v` to the nearest multiple of `n`.
+     * The alignment boundary `n` must be a power of two (1, 2, 4, 8, 16, ...).
+     *
+     * @tparam Integer Integer type (e.g., int, size_t, uint32_t).
+     * @param v Integer value to align.
+     * @param n Alignment boundary (must be a power of two).
+     * @return Integer Aligned value (multiple of n).
+     */
     template <typename Integer>
     constexpr Integer align(Integer v, int n) noexcept;
 
-    // convert value to float
+    /**
+     * @brief Convert a value to float.
+     * @param v Input float point value.
+     * @return A float value.
+     */
     template<typename Float, std::enable_if_t<std::is_floating_point_v<Float>, bool> = true>
     constexpr float toFloat(Float v) noexcept;
-    // convert value to normalized float
+    /**
+     * @brief Convert a value to normalized float.
+     * @param v Input unsigned integer value.
+     * @return A normalized float value.
+     */
     template<typename Unsigned, std::enable_if_t<std::is_unsigned_v<Unsigned>, bool> = true>
     constexpr float toFloat(Unsigned v) noexcept;
 
-    // clamp value between 0.0f and 1.0f
+    /**
+     * @brief Convert a float value to `Float` type and clamp the value between 0.0f and 1.0f.
+     * @param v Input float value.
+     * @return A value between 0.0f and 1.0f.
+     */
     template<typename Float, std::enable_if_t<std::is_floating_point_v<Float>, bool> = true>
     constexpr Float fromFloat(float v) noexcept;
-    // clamp value between 0 and Unsigned's max
+    /**
+     * @brief Convert a float value to `Unsigned` type and clamp the value between 0 and the max of `Unsigned`.
+     * @param v Input float value.
+     * @return A value between 0 and the max of `Unsigned`.
+     */
     template<typename Unsigned, std::enable_if_t<std::is_unsigned_v<Unsigned>, bool> = true>
     constexpr Unsigned fromFloat(float v) noexcept;
 
-    // clamp value between 0.0f and value
-    template<typename Float, std::enable_if_t<std::is_floating_point_v<Float>, bool> = true>
-    constexpr Float relu(float v) noexcept;
-    // clamp value between 0 and Unsigned's max
-    template<typename Unsigned, std::enable_if_t<std::is_unsigned_v<Unsigned>, bool> = true>
-    constexpr Unsigned relu(float v) noexcept;
-
-    // compute `ceil(log2(v))` as fast as possible
+    /**
+     * @brief Compute `ceil(log2(v))` as fast as possible.
+     * @param v Input.
+     * @return result of `ceil(log2(v))`.
+     */
     int ceilLog2(double v) noexcept;
 
-    // filter images
-    // source images should be passed by `const Image&` and destination images by `Image&`.
-    // all source images should have the same width and height, and so should all destination images.
-    // the width and height of the destination images will be used for the filtering process.
-    // the scale ratio from source images to destination images will be computed as `dst.width() / src.width()` and this ratio will be applied to both the width and height.
-    // the scale ratio is assumed to be an integer, so size of destination image should an integral multiple of source image, ohterwise it's an undefined behavior.
+    /**
+     * @brief Apply a parallel pixel-wise operation to multiple images with integer scaling.
+     *
+     * This function processes multiple images in parallel, applying a user-defined operation
+     * to each pixel position in the destination image(s). It supports integer upscaling from
+     * source to destination images.
+     *
+     * This function operates on destination image dimensions (w x h). For each destination
+     * pixel at (j, i), source pixel coordinates are computed as (j/scale, i/scale) where
+     * `scale = dst.width() / src.width()`.
+     * 
+     * @tparam F Type of the callable operation function.
+     * @tparam Images Variadic template parameter pack for image references.
+     *
+     * @param f Callable operation function that will be called for each pixel in the destination.
+     * @param images Variadic list of image references, the first image must be `const Image&`
+     *        (`src`) and last image must be `Image&` (`dst`), images in between can be
+     *        either const (sources) or non-const (destinations)
+     *
+     * @note All images must be valid (non-empty) `ac::core::Image` (with const/ref qualifiers).
+     * @note Processing is parallelized over rows.
+     * @note The function assumes uniform integer scaling, the scale factor must be an integer > 0,
+     *       and same in bothdimensions; non-integer scaling or different horizontal/vertical scaling 
+     *       factors result in undefined behavior.
+     */
     template<typename F, typename ...Images>
     auto filter(F&& f, Images& ...images) ->
         std::enable_if_t<(
@@ -57,8 +131,30 @@ namespace ac::core
             (std::is_same_v<ac::core::Image, std::remove_cv_t<Images>> && ...)),
         void>;
 
+    /**
+     * @brief allocate memory with internal alignment.
+     * @param size Size to allocate.
+     * @return A pointer to allocated memory.
+     */
     void* fastMalloc(std::size_t size) noexcept;
+    /**
+     * @brief deallocate memory witch allocated by `fastMalloc`.
+     * @param ptr A pointer from `fastMalloc`.
+     */
     void fastFree(void* ptr) noexcept;
+}
+
+inline constexpr float ac::core::identity(const float v) noexcept
+{
+    return v;
+}
+inline constexpr float ac::core::relu(const float v) noexcept
+{
+    return v < 0.0f ? 0.0f : v;
+}
+inline constexpr float ac::core::lrelu(const float v, const float n) noexcept
+{
+    return v < v * n ? v * n : v;
 }
 
 template <typename Integer>
@@ -81,23 +177,12 @@ inline constexpr float ac::core::toFloat(const Unsigned v) noexcept
 template<typename Float, std::enable_if_t<std::is_floating_point_v<Float>, bool>>
 inline constexpr Float ac::core::fromFloat(const float v) noexcept
 {
-    return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
+    return v < 0.0f ? 0.0f : (v < 1.0f ? v : 1.0f);
 }
 template<typename Unsigned, std::enable_if_t<std::is_unsigned_v<Unsigned>, bool>>
 inline constexpr Unsigned ac::core::fromFloat(const float v) noexcept
 {
-    return v < 0.0f ? 0 : (v > 1.0f ? std::numeric_limits<Unsigned>::max() : static_cast<Unsigned>(v * std::numeric_limits<Unsigned>::max() + 0.5f));
-}
-
-template<typename Float, std::enable_if_t<std::is_floating_point_v<Float>, bool>>
-inline constexpr Float ac::core::relu(const float v) noexcept
-{
-    return v < 0.0f ? 0.0f : v;
-}
-template<typename Unsigned, std::enable_if_t<std::is_unsigned_v<Unsigned>, bool>>
-inline constexpr Unsigned ac::core::relu(const float v) noexcept
-{
-    return fromFloat<Unsigned>(v);
+    return static_cast<Unsigned>(fromFloat<float>(v) * std::numeric_limits<Unsigned>::max() + 0.5f);
 }
 
 inline int ac::core::ceilLog2(const double v) noexcept

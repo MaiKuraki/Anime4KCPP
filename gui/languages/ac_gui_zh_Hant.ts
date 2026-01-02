@@ -30,21 +30,60 @@
     </message>
     <message>
         <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="12"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="16"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="20"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="24"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="28"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="32"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="36"/>
         <source>Lightweight ResNet, mild denoising.</source>
         <translation>輕量ResNet，輕度降噪。</translation>
     </message>
     <message>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="13"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="17"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="21"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="25"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="29"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="33"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="37"/>
+        <source>Lightweight ResNet, hdn with sharpening.</source>
+        <translation>輕量ResNet，HDN銳化。</translation>
+    </message>
+    <message>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="14"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="18"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="22"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="26"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="30"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="34"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="38"/>
+        <source>Lightweight ResNet, line enhancing.</source>
+        <translation>輕量ResNet，線條增強。</translation>
+    </message>
+    <message>
         <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="15"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="19"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="23"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="27"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="31"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="35"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="39"/>
+        <source>Lightweight ResNet, line sharpening.</source>
+        <translation>輕量ResNet，線條銳化。</translation>
+    </message>
+    <message>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="42"/>
         <source>General-purpose CPU processing with optional SIMD acceleration.</source>
         <translation>通用CPU計算，支援SIMD加速。</translation>
     </message>
     <message>
-        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="16"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="43"/>
         <source>Cross-platform acceleration requiring OpenCL 1.2+ compliant devices.</source>
         <translation>跨平台異構計算加速，需要支援OpenCL1.2+標準的裝置。</translation>
     </message>
     <message>
-        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="17"/>
+        <location filename="../../build/gui/i18n/i18n_marker_ac_specs_hpp.cpp" line="44"/>
         <source>NVIDIA GPU acceleration requiring Compute Capability 5.0+.</source>
         <translation>NVIDIA GPU加速，需CUDA計算能力5.0+的裝置。</translation>
     </message>
@@ -223,7 +262,7 @@
     </message>
     <message>
         <location filename="../ui/MainWindow.ui" line="372"/>
-        <location filename="../src/MainWindow.cpp" line="354"/>
+        <location filename="../src/MainWindow.cpp" line="353"/>
         <source>About</source>
         <translation>關於</translation>
     </message>
@@ -234,7 +273,7 @@
     </message>
     <message>
         <location filename="../ui/MainWindow.ui" line="382"/>
-        <location filename="../src/MainWindow.cpp" line="271"/>
+        <location filename="../src/MainWindow.cpp" line="270"/>
         <source>Exit</source>
         <translation>退出</translation>
     </message>
@@ -245,13 +284,13 @@
     </message>
     <message>
         <location filename="../ui/MainWindow.ui" line="395"/>
-        <location filename="../src/MainWindow.cpp" line="271"/>
+        <location filename="../src/MainWindow.cpp" line="270"/>
         <source>Exit confirmation</source>
         <translation>退出確認</translation>
     </message>
     <message>
         <location filename="../ui/MainWindow.ui" line="400"/>
-        <location filename="../src/MainWindow.cpp" line="328"/>
+        <location filename="../src/MainWindow.cpp" line="327"/>
         <source>License</source>
         <translation>授權條款</translation>
     </message>
@@ -291,12 +330,12 @@
         <translation>就緒</translation>
     </message>
     <message>
-        <location filename="../src/MainWindow.cpp" line="231"/>
+        <location filename="../src/MainWindow.cpp" line="230"/>
         <source>input</source>
         <translation>輸入</translation>
     </message>
     <message>
-        <location filename="../src/MainWindow.cpp" line="231"/>
+        <location filename="../src/MainWindow.cpp" line="230"/>
         <source>output</source>
         <translation>輸出</translation>
     </message>
@@ -311,42 +350,42 @@
         <translation>失敗</translation>
     </message>
     <message>
-        <location filename="../src/MainWindow.cpp" line="314"/>
+        <location filename="../src/MainWindow.cpp" line="313"/>
         <source>Devices</source>
         <translation>裝置</translation>
     </message>
     <message>
-        <location filename="../src/MainWindow.cpp" line="372"/>
+        <location filename="../src/MainWindow.cpp" line="371"/>
         <source>Anime4KCPP: A high performance anime upscaler</source>
         <translation>Anime4KCPP：高性能動漫超分工具</translation>
     </message>
     <message>
-        <location filename="../src/MainWindow.cpp" line="373"/>
+        <location filename="../src/MainWindow.cpp" line="372"/>
         <source>core version</source>
         <translation>核心版本</translation>
     </message>
     <message>
-        <location filename="../src/MainWindow.cpp" line="374"/>
+        <location filename="../src/MainWindow.cpp" line="373"/>
         <source>video module</source>
         <translation>影片模組</translation>
     </message>
     <message>
-        <location filename="../src/MainWindow.cpp" line="375"/>
+        <location filename="../src/MainWindow.cpp" line="374"/>
         <source>build date</source>
         <translation>構建日期</translation>
     </message>
     <message>
-        <location filename="../src/MainWindow.cpp" line="376"/>
+        <location filename="../src/MainWindow.cpp" line="375"/>
         <source>toolchain</source>
         <translation>工具鏈</translation>
     </message>
     <message>
-        <location filename="../src/MainWindow.cpp" line="377"/>
+        <location filename="../src/MainWindow.cpp" line="376"/>
         <source>Copyright</source>
         <translation>版權所有</translation>
     </message>
     <message>
-        <location filename="../src/MainWindow.cpp" line="378"/>
+        <location filename="../src/MainWindow.cpp" line="377"/>
         <source>disabled</source>
         <translation>不可用</translation>
     </message>

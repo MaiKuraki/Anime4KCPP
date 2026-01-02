@@ -29,15 +29,18 @@ public:
 
     template<typename F> void exec(F&& f);
     template<typename F, typename... Args> auto exec(F&& f, Args&&... args);
+    void wait();
 
 public:
     static unsigned int hardwareThreads() noexcept;
 
 private:
     bool stop = false;
+    std::size_t busy = 0;
     std::vector<std::thread> threads;
     std::queue<std::function<void()>> tasks;
-    std::condition_variable cnd;
+    std::condition_variable cvt;
+    std::condition_variable cvw;
     std::mutex mtx;
 };
 
@@ -50,12 +53,17 @@ inline ac::util::ThreadPool::ThreadPool(const std::size_t size)
             for (;;)
             {
                 std::unique_lock lock{ mtx };
-                cnd.wait(lock, [this] { return stop || !tasks.empty(); });
+                cvt.wait(lock, [this] { return stop || !tasks.empty(); });
                 if (stop && tasks.empty()) return;
+                busy++;
                 auto task = std::move(tasks.front());
                 tasks.pop();
                 lock.unlock();
                 task();
+                lock.lock();
+                busy--;
+                lock.unlock();
+                cvw.notify_all();
             }
         });
 }
@@ -66,7 +74,8 @@ inline ac::util::ThreadPool::~ThreadPool()
         const std::lock_guard lock{ mtx };
         stop = true;
     }
-    cnd.notify_all();
+    cvt.notify_all();
+    cvw.notify_all();
     for (auto&& thread : threads) thread.join();
 }
 
@@ -77,11 +86,11 @@ inline void ac::util::ThreadPool::exec(F&& f)
         const std::lock_guard lock{ mtx };
         tasks.emplace(std::forward<F>(f));
     }
-    cnd.notify_one();
+    cvt.notify_one();
 }
 
 template<typename F, typename ...Args>
-inline auto ac::util::ThreadPool::exec(F&& f, Args && ...args)
+inline auto ac::util::ThreadPool::exec(F&& f, Args&& ...args)
 {
     auto task = std::make_shared<std::packaged_task<decltype(std::declval<F>()(std::declval<Args>()...))()>>(std::bind(std::forward<F>(f), std::forward<Args>(args)...));
     auto ret = task->get_future();
@@ -89,8 +98,14 @@ inline auto ac::util::ThreadPool::exec(F&& f, Args && ...args)
         const std::lock_guard lock{ mtx };
         tasks.emplace([=]() { (*task)(); });
     }
-    cnd.notify_one();
+    cvt.notify_one();
     return ret;
+}
+
+inline void ac::util::ThreadPool::wait()
+{
+    std::unique_lock lock{ mtx };
+    cvw.wait(lock, [this] { return stop || (tasks.empty() && (busy == 0)); });
 }
 
 inline unsigned int ac::util::ThreadPool::hardwareThreads() noexcept

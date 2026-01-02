@@ -1,4 +1,4 @@
-project(ac_gui VERSION 3.0.0.0 LANGUAGES CXX)
+project(ac_gui VERSION 3.1.0.0 LANGUAGES CXX)
 
 set(GUI_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(GUI_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
@@ -114,6 +114,6 @@ ac_check_enable_static_crt(ac_gui)
 
 install(
     TARGETS ac_gui
-    RUNTIME DESTINATION bin
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     BUNDLE DESTINATION Applications
 )

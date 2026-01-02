@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -49,6 +48,16 @@ struct ImagePool
 
 static void benchmark(const std::shared_ptr<ac::core::Processor>& processor, const ImagePool& images, int batch, std::size_t threads)
 {
+    for (int i = 0; i < std::max(static_cast<int>(batch * 0.05), 1); i++)
+    {
+        processor->process(images.select(i), 2.0);
+        if (!processor->ok())
+        {
+            std::printf("%s\n", processor->error());
+            return;
+        }
+    }
+
     ac::util::Stopwatch stopwatch{};
     if (threads > 1)
     {
@@ -64,17 +73,10 @@ int main(int argc, char* argv[])
 {
     std::printf("usage: [model] [processor] [device] [width] [height] [batch] [threads]\n");
     std::printf("\n");
-    std::printf("%s", ac::core::Processor::info<ac::core::Processor::CPU>());
-#ifdef AC_CORE_WITH_OPENCL
-    std::printf("%s", ac::core::Processor::info<ac::core::Processor::OpenCL>());
-#endif
-#ifdef AC_CORE_WITH_CUDA
-    std::printf("%s", ac::core::Processor::info<ac::core::Processor::CUDA>());
-#endif
-    std::printf("\n");
+    std::printf("%s\n", ac::core::Processor::listInfo());
 
     auto model = argc > 1 ? argv[1] : "acnet";
-    auto processorType = ac::core::Processor::type(argc > 2 ? argv[2] : "cpu");
+    auto processorType = argc > 2 ? argv[2] : "cpu";
     auto processor = ac::core::Processor::create(processorType, argc > 3 ? std::atoi(argv[3]) : 0, model);
     if (!processor->ok())
     {
@@ -83,10 +85,10 @@ int main(int argc, char* argv[])
     }
     int w = argc > 4 ? std::max(std::atoi(argv[4]), 3) : 720;
     int h = argc > 5 ? std::max(std::atoi(argv[5]), 3) : 480;
-    int batch = argc > 6 ? std::max(std::atoi(argv[6]), 1) : processorType == ac::core::Processor::CPU ? 60 : 600;
+    int batch = argc > 6 ? std::max(std::atoi(argv[6]), 1) : processor->type() == ac::core::Processor::CPU ? 60 : 600;
     int threads = argc > 7 ? std::max(std::atoi(argv[7]), 1) : ac::util::ThreadPool::hardwareThreads();
 
-    std::printf("model: %s, processor: %s, device: %s, input: %d x %d x %d, threads: %d\n", model, ac::core::Processor::type(processorType), processor->name(), w, h, batch, threads);
+    std::printf("model: %s, processor: %s, device: %s, input: %d x %d x %d, threads: %d\n", model, processor->typeName(), processor->name(), w, h, batch, threads);
 
     // max image pool size: 128m
     ImagePool images{ w, h, batch, std::min(128 * 1024 * 1024 / (w * h), batch) };

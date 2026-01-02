@@ -83,19 +83,6 @@ namespace ac::video
                 }
             if (!dvideoStream) return false;
 
-            switch (dvideoStream->codecpar->format)
-            {
-            case AV_PIX_FMT_YUV420P:
-            case AV_PIX_FMT_YUV422P:
-            case AV_PIX_FMT_YUV444P:
-            case AV_PIX_FMT_YUV420P10:
-            case AV_PIX_FMT_YUV422P10:
-            case AV_PIX_FMT_YUV444P10:
-            case AV_PIX_FMT_YUV420P16:
-            case AV_PIX_FMT_YUV422P16:
-            case AV_PIX_FMT_YUV444P16: break;
-            default: return false;
-            }
             auto codec = (hints.decoder && *hints.decoder) ? avcodec_find_decoder_by_name(hints.decoder) : avcodec_find_decoder(dvideoStream->codecpar->codec_id); if (!codec) return false;
             decoderCtx = avcodec_alloc_context3(codec); if (!decoderCtx) return false;
             ret = avcodec_parameters_to_context(decoderCtx, dvideoStream->codecpar); if (ret < 0) return false;
@@ -109,7 +96,7 @@ namespace ac::video
         {
             int ret = 0;
             epacket = av_packet_alloc(); if (!epacket) return false;
-            ret = avformat_alloc_output_context2(&efmtCtx, nullptr, nullptr, filename); if (ret < 0) return false;
+            ret = avformat_alloc_output_context2(&efmtCtx, av_guess_format(nullptr, filename, nullptr), "matroska", filename); if (ret < 0) return false;
 
             AVPixelFormat targetPixFmt = AV_PIX_FMT_NONE;
             if (hints.format && *hints.format) targetPixFmt = av_get_pix_fmt(hints.format);
@@ -117,19 +104,49 @@ namespace ac::video
             encoderCtx = avcodec_alloc_context3(codec); if (!encoderCtx) return false;
 
             encoderCtx->pix_fmt = targetPixFmt != AV_PIX_FMT_NONE ? targetPixFmt : decoderCtx->pix_fmt;
-            if (av_pix_fmt_desc_get(encoderCtx->pix_fmt)->flags & AV_PIX_FMT_FLAG_RGB) return false; // YUV only.
-            auto bitDepth = getBitDepth(encoderCtx->pix_fmt);
-            switch (codec->id)
+            switch (encoderCtx->pix_fmt)
             {
-    #   if LIBAVCODEC_VERSION_MAJOR < 60 // ffmpeg 6, libavcodec 60
-            case AV_CODEC_ID_H264: encoderCtx->profile = bitDepth.bits > 8 ? FF_PROFILE_H264_HIGH_10 : FF_PROFILE_H264_HIGH; break;
-            case AV_CODEC_ID_HEVC: encoderCtx->profile = bitDepth.bits > 8 ? FF_PROFILE_HEVC_MAIN_10 : FF_PROFILE_HEVC_MAIN; break;
-    #   else
-            case AV_CODEC_ID_H264: encoderCtx->profile = bitDepth.bits > 8 ? AV_PROFILE_H264_HIGH_10 : AV_PROFILE_H264_HIGH; break;
-            case AV_CODEC_ID_HEVC: encoderCtx->profile = bitDepth.bits > 8 ? AV_PROFILE_HEVC_MAIN_10 : AV_PROFILE_HEVC_MAIN; break;
-    #   endif
-            default: break;
+            case AV_PIX_FMT_GRAY8:
+            case AV_PIX_FMT_GRAY10:
+            case AV_PIX_FMT_GRAY12:
+            case AV_PIX_FMT_GRAY16:
+            // planar
+            case AV_PIX_FMT_YUV420P:
+            case AV_PIX_FMT_YUV422P:
+            case AV_PIX_FMT_YUV444P:
+            case AV_PIX_FMT_YUV420P10:
+            case AV_PIX_FMT_YUV422P10:
+            case AV_PIX_FMT_YUV444P10:
+            case AV_PIX_FMT_YUV420P12:
+            case AV_PIX_FMT_YUV422P12:
+            case AV_PIX_FMT_YUV444P12:
+            case AV_PIX_FMT_YUV420P16:
+            case AV_PIX_FMT_YUV422P16:
+            case AV_PIX_FMT_YUV444P16:
+            // packed
+            case AV_PIX_FMT_NV12:
+            case AV_PIX_FMT_NV21:
+            case AV_PIX_FMT_NV16:
+            case AV_PIX_FMT_NV24:
+            case AV_PIX_FMT_NV42:
+            case AV_PIX_FMT_P010:
+            case AV_PIX_FMT_P210:
+            case AV_PIX_FMT_NV20:
+            case AV_PIX_FMT_P410:
+            case AV_PIX_FMT_P012:
+            case AV_PIX_FMT_P212:
+            case AV_PIX_FMT_P412:
+            case AV_PIX_FMT_P016:
+            case AV_PIX_FMT_P216:
+            case AV_PIX_FMT_P416: break;
+            default: return false;
             }
+            // just let encoder to choose a profile
+#       if LIBAVCODEC_VERSION_MAJOR < 60 // ffmpeg 6, libavcodec 60
+            encoderCtx->profile = FF_PROFILE_UNKNOWN;
+#       else
+            encoderCtx->profile = AV_PROFILE_UNKNOWN;
+#       endif
             encoderCtx->bit_rate = hints.bitrate > 0 ? hints.bitrate : static_cast<decltype(encoderCtx->bit_rate)>(decoderCtx->bit_rate * factor * factor);
             encoderCtx->rc_max_rate = encoderCtx->bit_rate * 2; // is this too big?
             encoderCtx->rc_buffer_size = encoderCtx->rc_max_rate * 5; // 10s
@@ -141,6 +158,7 @@ namespace ac::video
             encoderCtx->color_primaries = decoderCtx->color_primaries;
             encoderCtx->color_trc = decoderCtx->color_trc;
             encoderCtx->colorspace = decoderCtx->colorspace;
+            encoderCtx->color_range = decoderCtx->color_range;
             if (efmtCtx->oformat->flags & AVFMT_GLOBALHEADER) encoderCtx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
             ret = avcodec_open2(encoderCtx, codec, nullptr); if (ret < 0) return false;
             // copy all streams
@@ -209,7 +227,6 @@ namespace ac::video
 
             if (!swsCtx && (frame->format != encoderCtx->pix_fmt))// I think it can be assumed that the frame format will not change during decoding.
             {
-                if (swsCtx) sws_freeContext(swsCtx);
                 swsCtx = sws_getContext(frame->width, frame->height, static_cast<AVPixelFormat>(frame->format), frame->width, frame->height, encoderCtx->pix_fmt, SWS_FAST_BILINEAR | SWS_PRINT_INFO, nullptr, nullptr, nullptr);
                 if (!swsCtx) return false;
             }
@@ -268,17 +285,41 @@ namespace ac::video
             if (!src.dptr) return false;
             auto srcFrame = src.dptr->frame;
             auto dstFrame = av_frame_alloc(); if (!dstFrame) return false;
+
             dstFrame->width = encoderCtx->width;
             dstFrame->height = encoderCtx->height;
-            dstFrame->format = srcFrame->format;
+            dstFrame->format = encoderCtx->pix_fmt;
+
             dstFrame->pts = srcFrame->pts;
-    #   if LIBAVUTIL_VERSION_MAJOR > 57 // ffmpeg 5, libavutil 57
-            dstFrame->duration = srcFrame->duration;
-    #   endif
+
+            dstFrame->color_primaries = srcFrame->color_primaries;
+            dstFrame->color_trc = srcFrame->color_trc;
+            dstFrame->colorspace = srcFrame->colorspace;
+            dstFrame->color_range = srcFrame->color_range;
+
+            dstFrame->sample_aspect_ratio = srcFrame->sample_aspect_ratio;
+
             if (av_frame_get_buffer(dstFrame, 0) < 0)
             {
                 av_frame_free(&dstFrame);
                 return false;
+            }
+            // copy some side datas (basically for HDR)
+            for (int i = 0; i < srcFrame->nb_side_data; i++)
+            {
+                const AVFrameSideData* srcSideData = srcFrame->side_data[i];
+                switch (srcSideData->type)
+                {
+                case AV_FRAME_DATA_A53_CC:
+                case AV_FRAME_DATA_MASTERING_DISPLAY_METADATA:
+                case AV_FRAME_DATA_CONTENT_LIGHT_LEVEL: break;
+                default: continue;
+                }
+                AVBufferRef* bufferRef = av_buffer_ref(srcSideData->buf);
+                if (!bufferRef) continue;
+                AVFrameSideData* dstSideData = av_frame_new_side_data_from_buf(dstFrame, srcSideData->type, bufferRef);
+                if (!dstSideData) av_buffer_unref(&bufferRef);
+                else av_dict_copy(&dstSideData->metadata, srcSideData->metadata, 0);
             }
 
             fill(dst, dstFrame, src.dptr->packets);
@@ -389,54 +430,85 @@ namespace ac::video
         inline void PipelineImpl::fill(Frame& dst, AVFrame* const src, std::vector<AVPacket*>& packets) noexcept
         {
             int wscale = 2, hscale = 2, elementSize = sizeof(std::uint8_t);
-            bool packed = false;
+            int planes = 3;
             switch (src->format)
-            {// planar
+            {
+            case AV_PIX_FMT_GRAY8: planes = 1; break;
+            case AV_PIX_FMT_GRAY10:
+            case AV_PIX_FMT_GRAY12:
+            case AV_PIX_FMT_GRAY16: elementSize = sizeof(std::uint16_t); planes = 1; break;
+            // planar
             case AV_PIX_FMT_YUV444P: wscale = 1; [[fallthrough]];
             case AV_PIX_FMT_YUV422P: hscale = 1; break;
             case AV_PIX_FMT_YUV444P10:
+            case AV_PIX_FMT_YUV444P12:
             case AV_PIX_FMT_YUV444P16: wscale = 1; [[fallthrough]];
             case AV_PIX_FMT_YUV422P10:
+            case AV_PIX_FMT_YUV422P12:
             case AV_PIX_FMT_YUV422P16: hscale = 1; [[fallthrough]];
             case AV_PIX_FMT_YUV420P10:
+            case AV_PIX_FMT_YUV420P12:
             case AV_PIX_FMT_YUV420P16: elementSize = sizeof(std::uint16_t); break;
             // packed
+            case AV_PIX_FMT_NV42:
+            case AV_PIX_FMT_NV24: wscale = 1; [[fallthrough]];
+            case AV_PIX_FMT_NV16: hscale = 1; [[fallthrough]];
+            case AV_PIX_FMT_NV21:
+            case AV_PIX_FMT_NV12: planes = 2; break;
+            case AV_PIX_FMT_P410:
+            case AV_PIX_FMT_P412:
+            case AV_PIX_FMT_P416: wscale = 1; [[fallthrough]];
+            case AV_PIX_FMT_NV20:
+            case AV_PIX_FMT_P210:
+            case AV_PIX_FMT_P212:
+            case AV_PIX_FMT_P216: hscale = 1; [[fallthrough]];
             case AV_PIX_FMT_P010:
-            case AV_PIX_FMT_P016: elementSize = sizeof(std::uint16_t); [[fallthrough]];
-            case AV_PIX_FMT_NV12: packed = true; break;
+            case AV_PIX_FMT_P012:
+            case AV_PIX_FMT_P016: elementSize = sizeof(std::uint16_t); planes = 2; break;
             default: break;
             }
-            dst.plane[0].width = src->width;
-            dst.plane[0].height = src->height;
-            dst.plane[1].width = src->width / wscale;
-            dst.plane[1].height = src->height / hscale;
-            dst.plane[2].width = src->width / wscale;
-            dst.plane[2].height = src->height / hscale;
-            dst.planes = packed ? 2 : 3;
+            dst.planes = planes;
             for (int i = 0; i < dst.planes; i++)
             {
+                dst.plane[i].width = src->width / (i > 0 ? wscale : 1);
+                dst.plane[i].height = src->height / (i > 0 ? hscale : 1);
+                dst.plane[i].channel = 1;
                 dst.plane[i].stride = src->linesize[i];
                 dst.plane[i].data = src->data[i];
-                dst.plane[i].channel = 1;
             }
-            if (packed) dst.plane[1].channel = 2;
+            if (planes == 2) dst.plane[1].channel = 2;
             dst.elementType = (0 << 8) | elementSize; // same as ac::core::Image
             dst.dptr = std::make_shared<FrameData>();
             dst.dptr->frame = src;
-            dst.dptr->packets = std::move(packets); packets.clear();
+            dst.dptr->packets = std::move(packets);
+            packets.clear();
         }
         inline Info::BitDepth PipelineImpl::getBitDepth(const AVPixelFormat format) noexcept
         {
             Info::BitDepth bitDepth{ false, 8 };
             switch (format)
             {
+            case AV_PIX_FMT_GRAY10:
             case AV_PIX_FMT_YUV420P10:
             case AV_PIX_FMT_YUV422P10:
-            case AV_PIX_FMT_YUV444P10: bitDepth.lsb = true; [[fallthrough]];
+            case AV_PIX_FMT_YUV444P10:
+            case AV_PIX_FMT_NV20: bitDepth.lsb = true; [[fallthrough]];
+            case AV_PIX_FMT_P410:
+            case AV_PIX_FMT_P210:
             case AV_PIX_FMT_P010: bitDepth.bits = 10; break;
+            case AV_PIX_FMT_GRAY12:
+            case AV_PIX_FMT_YUV420P12:
+            case AV_PIX_FMT_YUV422P12:
+            case AV_PIX_FMT_YUV444P12: bitDepth.lsb = true; [[fallthrough]];
+            case AV_PIX_FMT_P412:
+            case AV_PIX_FMT_P212:
+            case AV_PIX_FMT_P012: bitDepth.bits = 12; break;
+            case AV_PIX_FMT_GRAY16:
             case AV_PIX_FMT_YUV420P16:
             case AV_PIX_FMT_YUV422P16:
             case AV_PIX_FMT_YUV444P16:
+            case AV_PIX_FMT_P416:
+            case AV_PIX_FMT_P216:
             case AV_PIX_FMT_P016: bitDepth.bits = 16; break;
             default: break;
             }

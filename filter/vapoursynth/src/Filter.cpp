@@ -6,7 +6,7 @@
 
 #include "AC/Core.hpp"
 
-#define SET_ERROR(msg) { vsapi->mapSetError(out, (msg)); if (node) vsapi->freeNode(node); return; }
+#define EXIT_WITH_ERROR(msg) do { vsapi->mapSetError(out, (msg)); if (node) vsapi->freeNode(node); return; } while(0)
 
 struct Context
 {
@@ -46,7 +46,7 @@ static const VSFrame* VS_CC filter(int n, int activationReason, void* instanceCt
     return nullptr;
 }
 
-static void VS_CC destory(void* instanceCtx, VSCore* /*core*/, const VSAPI* vsapi)
+static void VS_CC destroy(void* instanceCtx, VSCore* /*core*/, const VSAPI* vsapi)
 {
     auto ctx = static_cast<Context*>(instanceCtx);
     vsapi->freeNode(ctx->node);
@@ -58,7 +58,7 @@ static void VS_CC create(const VSMap* in, VSMap* out, void* /*userData*/, VSCore
     int err = peSuccess;
 
     auto node = vsapi->mapGetNode(in, "clip", 0, &err);
-    if (err != peSuccess) SET_ERROR("Anime4KCPP: no clip");
+    if (err != peSuccess) EXIT_WITH_ERROR("Anime4KCPP: no clip");
     auto vi = vsapi->getVideoInfo(node);
 
     auto type = [&]() ->int {
@@ -70,21 +70,24 @@ static void VS_CC create(const VSMap* in, VSMap* out, void* /*userData*/, VSCore
         }
         return 0;
     }();
-    if (!type) SET_ERROR("Anime4KCPP: only planar YUV uint8, uint16 and float32 input supported");
+    if (!type) EXIT_WITH_ERROR("Anime4KCPP: only planar YUV uint8, uint16 and float32 input supported");
 
     auto factor = static_cast<double>(vsapi->mapGetFloat(in, "factor", 0, &err));
     if (err != peSuccess) factor = 2.0;
-    if (factor <= 1.0) SET_ERROR("Anime4KCPP: this is a upscaler, so make sure factor > 1.0");
+    if (factor <= 1.0) EXIT_WITH_ERROR("Anime4KCPP: this is a upscaler, so make sure factor > 1.0");
 
     auto processorType = vsapi->mapGetData(in, "processor", 0, &err);
     if (err != peSuccess) processorType = "cpu";
 
     auto device = static_cast<int>(vsapi->mapGetInt(in, "device", 0, &err));
     if (err != peSuccess) device = 0;
-    if (device < 0) SET_ERROR("Anime4KCPP: the device index cannot be negative");
+    if (device < 0) EXIT_WITH_ERROR("Anime4KCPP: the device index cannot be negative");
 
     auto model = vsapi->mapGetData(in, "model", 0, &err);
     if (err != peSuccess) model = "acnet-hdn0";
+
+    auto processor = ac::core::Processor::create(processorType, device, model);
+    if (!processor->ok()) EXIT_WITH_ERROR(processor->error());
 
     auto ctx = new Context{};
     ctx->node = node;
@@ -93,16 +96,15 @@ static void VS_CC create(const VSMap* in, VSMap* out, void* /*userData*/, VSCore
     ctx->vi.height = static_cast<decltype(ctx->vi.height)>(vi->height * factor);
     ctx->type = type;
     ctx->factor = factor;
-    ctx->processor = ac::core::Processor::create(ac::core::Processor::type(processorType), device, model);
-    if (!ctx->processor->ok()) SET_ERROR(ctx->processor->error());
+    ctx->processor = processor;
 
     VSFilterDependency deps[] = { {node, rpGeneral} };
-    vsapi->createVideoFilter(out, "Upscale", &ctx->vi, filter, destory, fmParallel, deps, 1, ctx, core);
+    vsapi->createVideoFilter(out, "Upscale", &ctx->vi, filter, destroy, fmParallel, deps, 1, ctx, core);
 }
 
 VS_EXTERNAL_API(void) VapourSynthPluginInit2(VSPlugin* plugin, const VSPLUGINAPI* vspapi)
 {
-    vspapi->configPlugin("github.tianzerl.anime4kcpp", "anime4kcpp", "Anime4KCPP for VapourSynth", VS_MAKE_VERSION(3, 0), VAPOURSYNTH_API_VERSION, 0, plugin);
+    vspapi->configPlugin("github.tianzerl.anime4kcpp", "anime4kcpp", "Anime4KCPP for VapourSynth", VS_MAKE_VERSION(3, 1), VAPOURSYNTH_API_VERSION, 0, plugin);
     vspapi->registerFunction("ACUpscale",
         "clip:vnode;"
         "factor:float:opt;"

@@ -1,3 +1,5 @@
+#include <cstdlib>
+#include <cstring>
 #include <memory>
 
 #include "AC/Core.hpp"
@@ -17,7 +19,7 @@ struct ac_processor_handle
 
 namespace detail
 {
-    void copyProp(const ac::core::Image& src, ac_image* dst)
+    static inline void copyProp(const ac::core::Image& src, ac_image* dst)
     {
         dst->width = src.width();
         dst->height = src.height();
@@ -28,6 +30,19 @@ namespace detail
     }
 }
 
+ac_image* ac_image_alloc()
+{
+    auto ptr = std::malloc(sizeof(ac_image));
+    if (ptr) std::memset(ptr, 0, sizeof(ac_image));
+    return static_cast<ac_image*>(ptr);
+}
+void ac_image_free(ac_image** const image)
+{
+    if (!(image && *image)) return;
+    ac_image_unref(*image);
+    std::free(*image);
+    *image = nullptr;
+}
 int ac_image_ref(const ac_image* const src, ac_image* const dst)
 {
     if (!(src && dst && src->hptr)) return AC_ERROR(EINVAL);
@@ -65,6 +80,14 @@ int ac_image_from(ac_image* image, const void* data)
     if (!image->hptr) image->hptr = new ac_image_handle{};
     image->hptr->object.from(image->width, image->height, image->channels, image->element_type, data, image->stride);
     detail::copyProp(image->hptr->object, image);
+    return AC_SUCCESS;
+}
+int ac_image_view(const ac_image* const src, ac_image* const dst, const int x, const int y, const int w, const int h)
+{
+    if (!(src && dst && src->hptr)) return AC_ERROR(EINVAL);
+    if (dst->hptr) dst->hptr->object = src->hptr->object.view(x, y, w, h);
+    else dst->hptr = new ac_image_handle{ src->hptr->object.view(x, y, w, h) };
+    detail::copyProp(dst->hptr->object, dst);
     return AC_SUCCESS;
 }
 int ac_image_clone(const ac_image* const src, ac_image* const dst)
@@ -180,6 +203,16 @@ const char* ac_processor_name(const ac_processor* const processor)
     if (!(processor && processor->hptr)) return nullptr;
     return processor->hptr->object->name();
 }
+int ac_processor_type(const ac_processor* const processor)
+{
+    if (!(processor && processor->hptr)) return AC_ERROR(EINVAL);
+    return processor->hptr->object->type();
+}
+const char* ac_processor_type_name(const ac_processor* const processor)
+{
+    if (!(processor && processor->hptr)) return nullptr;
+    return processor->hptr->object->typeName();
+}
 
 const char* ac_processor_info(const int processor_type)
 {
@@ -195,11 +228,7 @@ const char* ac_processor_info(const int processor_type)
     default: return "unsupported processor";
     }
 }
-int ac_processor_type(const char* const processor_type_name)
+const char* ac_processor_list_info()
 {
-    return ac::core::Processor::type(processor_type_name);
-}
-const char* ac_processor_type_name(const int processor_type)
-{
-    return ac::core::Processor::type(processor_type);
+    return ac::core::Processor::listInfo();
 }

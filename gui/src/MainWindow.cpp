@@ -43,7 +43,6 @@ MainWindow::~MainWindow() noexcept = default;
 void MainWindow::init()
 {
     qApp->setStyle(QStyleFactory::create(gConfig.gui.styleName));
-    qApp->setPalette(qApp->style()->standardPalette());
 
     QObject::connect(ui->action_exit, &QAction::triggered, this, &MainWindow::close);
 
@@ -53,7 +52,6 @@ void MainWindow::init()
         QObject::connect(action, &QAction::triggered, this, [=]() {
             gConfig.gui.styleName = action->text();
             qApp->setStyle(QStyleFactory::create(gConfig.gui.styleName));
-            qApp->setPalette(qApp->style()->standardPalette());
         });
         ui->menu_settings_style->addAction(action);
     }
@@ -83,12 +81,12 @@ void MainWindow::init()
     QObject::connect(ui->line_edit_output_path_video, &QLineEdit::textChanged, this,
         [](const QString& value) { gConfig.io.videoOutputPath = value; });
     QObject::connect(ui->push_button_output_path_image_select, &QPushButton::clicked, this, [=]() {
-            auto path = MainWindow::selectDir();
-            if (!path.isEmpty()) ui->line_edit_output_path_image->setText(path);
+        auto path = MainWindow::selectDir();
+        if (!path.isEmpty()) ui->line_edit_output_path_image->setText(path);
     });
     QObject::connect(ui->push_button_output_path_video_select, &QPushButton::clicked, this, [=]() {
-            auto path = MainWindow::selectDir();
-            if (!path.isEmpty()) ui->line_edit_output_path_video->setText(path);
+        auto path = MainWindow::selectDir();
+        if (!path.isEmpty()) ui->line_edit_output_path_video->setText(path);
     });
     QObject::connect(ui->push_button_output_path_image_open, &QPushButton::clicked, this,
         []() { MainWindow::openDir(gConfig.io.imageOutputPath); });
@@ -111,10 +109,12 @@ void MainWindow::init()
     ui->spin_box_device->setValue(gConfig.upscaler.device);
     ui->double_spin_box_factor->setMinimum(1.0);
     ui->double_spin_box_factor->setValue(gConfig.upscaler.factor);
-    ui->combo_box_processor->addItems({ std::begin(ac::specs::ProcessorNameList), std::end(ac::specs::ProcessorNameList) });
+    ui->combo_box_processor->addItems({ std::begin(ac::specs::ProcessorList), std::end(ac::specs::ProcessorList) });
     for (std::size_t i = 0; i < std::size(ac::specs::ProcessorDescriptionList); i++) ui->combo_box_processor->setItemData(i, QCoreApplication::translate("ExternI18N", ac::specs::ProcessorDescriptionList[i]), Qt::ToolTipRole);
     ui->combo_box_processor->setCurrentText(gConfig.upscaler.processor);
-    ui->combo_box_model->addItems({ std::begin(ac::specs::ModelNameList), std::end(ac::specs::ModelNameList) });
+    ui->combo_box_model->setStyleSheet("combobox-popup: 0;");
+    ui->combo_box_model->view()->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    ui->combo_box_model->addItems({ std::begin(ac::specs::ModelList), std::end(ac::specs::ModelList) });
     for (std::size_t i = 0; i < std::size(ac::specs::ModelDescriptionList); i++) ui->combo_box_model->setItemData(i, QCoreApplication::translate("ExternI18N", ac::specs::ModelDescriptionList[i]), Qt::ToolTipRole);
     ui->combo_box_model->setCurrentText(gConfig.upscaler.model);
     QObject::connect(ui->spin_box_device, qOverload<int>(&QSpinBox::valueChanged), this,
@@ -192,7 +192,7 @@ void MainWindow::init()
     setAcceptDrops(true);
 
     gLogger.info() << "Anime4KCPP GUI v" AC_CORE_VERSION_STR " started";
-    gLogger.info() << '\n' << gUpscaler.info();
+    gLogger.info() << '\n' << gUpscaler.listProcessorInfo();
 }
 
 void MainWindow::addTask(const QFileInfo& fileInfo)
@@ -218,19 +218,18 @@ void MainWindow::addTask(const QFileInfo& fileInfo)
         taskListModel.setHeaderData(0, Qt::Horizontal, count, Qt::UserRole);
     });
 
-    auto updateOutputInfo = [taskDataWeakPointer = QWeakPointer<TaskData>(taskData), baseName = fileInfo.completeBaseName(), itemOutputName, itemPath]()
+    auto updateOutputInfo = [taskDataWeakPointer = QWeakPointer<TaskData>(taskData), baseName = fileInfo.completeBaseName(), itemOutputName, itemPath]() {
+        if (auto taskData = taskDataWeakPointer.toStrongRef())
         {
-            if (auto taskData = taskDataWeakPointer.toStrongRef())
-            {
-                auto& prefix = taskData->type == TaskData::TYPE_IMAGE ? gConfig.io.imagePrefix : gConfig.io.videoPrefix;
-                auto& suffix = taskData->type == TaskData::TYPE_IMAGE ? gConfig.io.imageSuffix : gConfig.io.videoSuffix;
-                auto outputName = prefix + baseName + suffix;
-                taskData->path.output = QDir{ taskData->type == TaskData::TYPE_IMAGE ? gConfig.io.imageOutputPath : gConfig.io.videoOutputPath }.filePath(outputName);
+            auto& prefix = taskData->type == TaskData::TYPE_IMAGE ? gConfig.io.imagePrefix : gConfig.io.videoPrefix;
+            auto& suffix = taskData->type == TaskData::TYPE_IMAGE ? gConfig.io.imageSuffix : gConfig.io.videoSuffix;
+            auto outputName = prefix + baseName + suffix;
+            taskData->path.output = QDir{ taskData->type == TaskData::TYPE_IMAGE ? gConfig.io.imageOutputPath : gConfig.io.videoOutputPath }.filePath(outputName);
 
-                itemOutputName->setText(outputName);
-                itemPath->setData(QString{ "%1: %3\n%2: %4" }.arg(tr("input"), tr("output"), taskData->path.input, taskData->path.output), Qt::ToolTipRole);
-            }
-        };
+            itemOutputName->setText(outputName);
+            itemPath->setData(QString{ "%1: %3\n%2: %4" }.arg(tr("input"), tr("output"), taskData->path.input, taskData->path.output), Qt::ToolTipRole);
+        }
+    };
 
     updateOutputInfo();
 
@@ -313,7 +312,7 @@ void MainWindow::on_action_list_devices_triggered()
     devicesMessageBox->setAttribute(Qt::WA_DeleteOnClose);
     devicesMessageBox->setWindowTitle(tr("Devices"));
     devicesMessageBox->setWindowModality(Qt::NonModal);
-    devicesMessageBox->setText(Upscaler::info());
+    devicesMessageBox->setText(gUpscaler.listProcessorInfo());
     if (auto layout = qobject_cast<QGridLayout*>(devicesMessageBox->layout()))
         layout->addItem(new QSpacerItem{ 250, 0, QSizePolicy::Minimum, QSizePolicy::Expanding }, layout->rowCount(), 0, 1, layout->columnCount());
     devicesMessageBox->show();

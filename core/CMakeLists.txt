@@ -1,4 +1,4 @@
-project(ac_core VERSION 3.0.0.0 LANGUAGES CXX)
+project(ac_core VERSION 3.1.0.0 LANGUAGES CXX)
 
 set(CORE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(CORE_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
@@ -16,7 +16,9 @@ if(AC_CORE_WITH_OPENCL)
     include(${DEPENDENCY_DIR}/opencl.cmake)
     include(${CMAKE_DIR}/GenOpenCLKernelHeader.cmake)
 
-    generate_opencl_kernel_header(${CORE_SOURCE_DIR}/src/processor/opencl/Kernel.cl ${CORE_BINARY_DIR}/include/AC/Core/OpenCL/Kernel.hpp)
+    generate_opencl_kernel_header(${CORE_SOURCE_DIR}/src/processor/opencl/CommonKernel.cl ${CORE_BINARY_DIR}/include/AC/Core/Processor/OpenCL/CommonKernel.hpp Common)
+    generate_opencl_kernel_header(${CORE_SOURCE_DIR}/src/processor/opencl/ACNetKernel.cl ${CORE_BINARY_DIR}/include/AC/Core/Processor/OpenCL/ACNetKernel.hpp ACNet)
+    generate_opencl_kernel_header(${CORE_SOURCE_DIR}/src/processor/opencl/ARNetKernel.cl ${CORE_BINARY_DIR}/include/AC/Core/Processor/OpenCL/ARNetKernel.hpp ARNet)
 endif()
 include(${CMAKE_DIR}/GenImageResizeSIMD.cmake)
 
@@ -73,7 +75,7 @@ target_sources(ac PRIVATE
 target_include_directories(ac PUBLIC
     $<BUILD_INTERFACE:${CORE_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CORE_BINARY_DIR}/include>
-    $<INSTALL_INTERFACE:ac/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
 # We don't need setting any cpu arch flag for MSVC, setting it may actually degrade performance.
@@ -82,7 +84,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_SIMULATE_ID MATCHES "MSVC
     if(AC_CORE_WITH_SSE AND BUILD_ARCH_32BIT)
         set_source_files_properties(${CORE_SOURCE_DIR}/src/processor/cpu/x86/SSE.cpp PROPERTIES COMPILE_OPTIONS "/arch:SSE")
     endif()
-    if(AC_CORE_WITH_SSE2 AND BUILD_ARCH_32BIT) 
+    if(AC_CORE_WITH_SSE2 AND BUILD_ARCH_32BIT)
         set_source_files_properties(${CORE_BINARY_DIR}/src/simd/ImageResizeSSE2.cpp PROPERTIES COMPILE_OPTIONS "/arch:SSE2")
     endif()
     if(AC_CORE_WITH_AVX)
@@ -166,6 +168,7 @@ target_compile_definitions(ac PUBLIC
     $<$<BOOL:${AC_CORE_WITH_WASM_SIMD128}>:AC_CORE_WITH_WASM_SIMD128>
     $<$<BOOL:${AC_CORE_WITH_OPENCL}>:AC_CORE_WITH_OPENCL>
     $<$<BOOL:${AC_CORE_WITH_CUDA}>:AC_CORE_WITH_CUDA>
+    $<$<BOOL:${AC_CORE_ENABLE_FAST_MATH}>:AC_CORE_ENABLE_FAST_MATH>
     $<$<BOOL:${AC_CORE_DISABLE_IMAGE_IO}>:AC_CORE_DISABLE_IMAGE_IO>
     $<$<AND:$<BOOL:${AC_CORE_HAVE_WIN32_ALIGNED_MALLOC}>,$<BOOL:${AC_CORE_HAVE_WIN32_ALIGNED_FREE}>>:AC_CORE_HAVE_WIN32_ALIGNED_MALLOC>
     $<$<BOOL:${AC_CORE_HAVE_STD_ALIGNED_ALLOC}>:AC_CORE_HAVE_STD_ALIGNED_ALLOC>
@@ -185,6 +188,9 @@ if(AC_CORE_ENABLE_FAST_MATH)
     else()
         target_compile_options(ac PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-ffast-math>)
     endif()
+    if(CMAKE_CUDA_COMPILER_ID MATCHES "NVIDIA")
+        target_compile_options(ac PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-use_fast_math>)
+    endif()
 endif()
 
 if(EMSCRIPTEN)
@@ -199,15 +205,15 @@ set_target_properties(ac PROPERTIES EXPORT_NAME "Core")
 
 include(GenerateExportHeader)
 generate_export_header(ac
-    BASE_NAME "AC"
-    EXPORT_FILE_NAME ${CORE_BINARY_DIR}/include/ACExport.hpp
+    BASE_NAME "AC_CORE"
+    EXPORT_FILE_NAME ${CORE_BINARY_DIR}/include/ACCoreExport.hpp
 )
 
 install(
     TARGETS ac EXPORT AC
-    ARCHIVE DESTINATION ac/lib
-    LIBRARY DESTINATION ac/lib
-    RUNTIME DESTINATION bin
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-install(DIRECTORY ${CORE_SOURCE_DIR}/include ${CORE_BINARY_DIR}/include DESTINATION ac)
+install(DIRECTORY ${CORE_SOURCE_DIR}/include/ ${CORE_BINARY_DIR}/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

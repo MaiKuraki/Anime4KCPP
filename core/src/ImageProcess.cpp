@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <type_traits>
 
@@ -301,24 +302,14 @@ namespace ac::core::detail
         }, srcy, srcu, srcv, srca, dst);
     }
 
-    template<typename IN, typename OUT = IN>
-    static inline void shl(const Image& src, Image& dst, const int n) noexcept
+    template<typename IN, typename OUT = IN, typename OP>
+    static inline void elementwise(const Image& src, Image& dst, const int n, OP&& op) noexcept
     {
         for (int i = 0; i < src.height(); i++)
         {
             auto in = static_cast<const IN*>(src.ptr(i));
             auto out = static_cast<OUT*>(dst.ptr(i));
-            for (int j = 0; j < src.width() * src.channels(); j++) *out++ = *in++ << n;
-        }
-    }
-    template<typename IN, typename OUT = IN>
-    static inline void shr(const Image& src, Image& dst, const int n) noexcept
-    {
-        for (int i = 0; i < src.height(); i++)
-        {
-            auto in = static_cast<const IN*>(src.ptr(i));
-            auto out = static_cast<OUT*>(dst.ptr(i));
-            for (int j = 0; j < src.width() * src.channels(); j++) *out++ = *in++ >> n;
+            for (int j = 0; j < src.width() * src.channels(); j++) *out++ = op(*in++, n);
         }
     }
 
@@ -341,14 +332,34 @@ namespace ac::core::detail
             }
         }
     }
+}
 
-    static inline void crop(const Image& src, Image& dst, int x, int y) noexcept
+namespace ac::core::impl
+{
+    template <typename OP>
+    void bitwise(Image& image, const int n, OP&& op) noexcept
     {
-        for (int i = 0; i < dst.height(); i++)
+        if (image.empty() || image.isFloat() || n <= 0) return;
+        switch (image.type())
         {
-            auto lineSize = dst.width() * dst.pixelSize();
-            std::memcpy(dst.line(i), src.pixel(x, y + i), lineSize);
+        case Image::UInt8: detail::elementwise<std::uint8_t>(image, image, n, op); break;
+        case Image::UInt16: detail::elementwise<std::uint16_t>(image, image, n, op); break;
         }
+    }
+    template <typename OP>
+    void bitwise(const Image& src, Image& dst, const int n, OP&& op) noexcept
+    {
+        if (src.empty() || src.isFloat() || n <= 0) return;
+        Image tmp{};
+        if (dst.empty() || (src == dst) || (dst.width() != src.width()) || (dst.height() != src.height()) || (dst.channels() != src.channels()) || (dst.type() != src.type()))
+            tmp.create(src.width(), src.height(), src.channels(), src.type());
+        else tmp = dst;
+        switch (src.type())
+        {
+        case Image::UInt8: detail::elementwise<std::uint8_t>(src, tmp, n, op); break;
+        case Image::UInt16: detail::elementwise<std::uint16_t>(src, tmp, n, op); break;
+        }
+        if (dst != tmp) dst = tmp;
     }
 }
 
@@ -494,67 +505,32 @@ void ac::core::yuva2rgba(const Image& y, const Image& u, const Image& v, const I
     case Image::Float32: return detail::yuva2rgba<float>(y, u, v, a, rgba);
     }
 }
-void ac::core::unpadding(const Image& src, Image& dst) noexcept
+ac::core::Image ac::core::unpadding(const Image& src) noexcept
 {
-    if (src.empty()) return;
     auto lineSize = src.width() * src.pixelSize();
-    if (src.stride() == lineSize)
-    {
-        if (dst != src) dst = src;
-        return;
-    }
-    Image tmp{};
-    if (src == dst || dst.empty() || (dst.width() != src.width()) || (dst.height() != src.height()) || (dst.channels() != src.channels()) || (dst.type() != src.type()) || (dst.stride() != lineSize))
-        tmp.create(src.width(), src.height(), src.channels(), src.type(), lineSize);
-    else tmp = dst;
-    for (int i = 0; i < src.height(); i++) std::memcpy(tmp.ptr(i), src.ptr(i), lineSize);
-    if (dst != tmp) dst = tmp;
+    if (src.empty() || (src.stride() == lineSize)) return src;
+
+    Image dst{ src.width(), src.height(), src.channels(), src.type(), lineSize };
+
+    for (int i = 0; i < src.height(); i++) std::memcpy(dst.ptr(i), src.ptr(i), lineSize);
+
+    return dst;
 }
 void ac::core::shl(Image& image, const int n) noexcept
 {
-    if (image.empty() || !image.isUint() || n <= 0) return;
-    switch (image.type())
-    {
-    case Image::UInt8: detail::shl<std::uint8_t>(image, image, n); break;
-    case Image::UInt16: detail::shl<std::uint16_t>(image, image, n); break;
-    }
+    impl::bitwise(image, n, [](auto a, auto b) { return a << b; });
 }
 void ac::core::shl(const Image& src, Image& dst, const int n) noexcept
 {
-    if (src.empty() || !src.isUint() || n <= 0) return;
-    Image tmp{};
-    if (src == dst || dst.empty() || (dst.width() != src.width()) || (dst.height() != src.height()) || (dst.channels() != src.channels()) || (dst.type() != src.type()))
-        tmp.create(src.width(), src.height(), src.channels(), src.type());
-    else tmp = dst;
-    switch (src.type())
-    {
-    case Image::UInt8: detail::shl<std::uint8_t>(src, tmp, n); break;
-    case Image::UInt16: detail::shl<std::uint16_t>(src, tmp, n); break;
-    }
-    if (dst != tmp) dst = tmp;
+    impl::bitwise(src, dst, n, [](auto a, auto b) { return a << b; });
 }
 void ac::core::shr(Image& image, const int n) noexcept
 {
-    if (image.empty() || !image.isUint() || n <= 0) return;
-    switch (image.type())
-    {
-    case Image::UInt8: detail::shr<std::uint8_t>(image, image, n); break;
-    case Image::UInt16: detail::shr<std::uint16_t>(image, image, n); break;
-    }
+    impl::bitwise(image, n, [](auto a, auto b) { return a >> b; });
 }
 void ac::core::shr(const Image& src, Image& dst, const int n) noexcept
 {
-    if (src.empty() || !src.isUint() || n <= 0) return;
-    Image tmp{};
-    if (src == dst || dst.empty() || (dst.width() != src.width()) || (dst.height() != src.height()) || (dst.channels() != src.channels()) || (dst.type() != src.type()))
-        tmp.create(src.width(), src.height(), src.channels(), src.type());
-    else tmp = dst;
-    switch (src.type())
-    {
-    case Image::UInt8: detail::shr<std::uint8_t>(src, tmp, n); break;
-    case Image::UInt16: detail::shr<std::uint16_t>(src, tmp, n); break;
-    }
-    if (dst != tmp) dst = tmp;
+    impl::bitwise(src, dst, n, [](auto a, auto b) { return a >> b; });
 }
 
 ac::core::Image ac::core::astype(const Image& src, const int type) noexcept
@@ -580,25 +556,32 @@ ac::core::Image ac::core::astype(const Image& src, const int type) noexcept
 }
 void ac::core::copy(const Image& src, Image& dst) noexcept
 {
-    if (src.empty()) dst = src;
-    if (src == dst) return;
+    if (src.empty())
+    {
+        dst = src;
+        return;
+    }
+
+    bool sameShape = (dst.width() == src.width()) && (dst.height() == src.height()) && (dst.channels() == src.channels());
+
+    if ((dst.ptr() == src.ptr()) && (dst.type() == src.type()) && sameShape) return;
 
     Image tmp{};
-    if (dst.empty() || (dst.width() != src.width()) || (dst.height() != src.height()) || (dst.channels() != src.channels()))
-        tmp.create(src.width(), src.height(), src.channels(), src.type());
+    if (dst.empty() || (src == dst) || !sameShape)
+        tmp.create(src.width(), src.height(), src.channels(), dst.empty() ? src.type() : dst.type());
     else tmp = dst;
 
-    if (src.type() == dst.type())
+    if (src.type() == tmp.type())
         detail::copy(src, tmp);
-    else if (src.type() == Image::UInt8 && dst.type() == Image::Float32)
+    else if (src.type() == Image::UInt8 && tmp.type() == Image::Float32)
         detail::copy<std::uint8_t, float>(src, tmp);
-    else if (src.type() == Image::Float32 && dst.type() == Image::UInt8)
+    else if (src.type() == Image::Float32 && tmp.type() == Image::UInt8)
         detail::copy<float, std::uint8_t>(src, tmp);
-    else if (src.type() == Image::UInt16 && dst.type() == Image::Float32)
+    else if (src.type() == Image::UInt16 && tmp.type() == Image::Float32)
         detail::copy<std::uint16_t, float>(src, tmp);
-    else if (src.type() == Image::Float32 && dst.type() == Image::UInt16)
+    else if (src.type() == Image::Float32 && tmp.type() == Image::UInt16)
         detail::copy<float, std::uint16_t>(src, tmp);
-    else if (src.type() == Image::UInt8 && dst.type() == Image::UInt16)
+    else if (src.type() == Image::UInt8 && tmp.type() == Image::UInt16)
         detail::copy<std::uint8_t, std::uint16_t>(src, tmp);
 
     if (dst != tmp) dst = tmp;
@@ -608,15 +591,59 @@ ac::core::Image ac::core::crop(const Image& src, const int x, const int y, const
 {
     if (src.empty()) return src;
 
-    int intersectX = std::max(x, 0);
-    int intersectY = std::max(y, 0);
-    int intersectW = std::min(src.width(), x + w) - intersectX;
-    int intersectH = std::min(src.height(), y + h) - intersectY;
+    int rectX = w < 0 ? x + w : x;
+    int rectY = h < 0 ? y + h : y;
+    int rectW = std::abs(w);
+    int rectH = std::abs(h);
 
-    if (intersectW <= 0 || intersectH <= 0) return Image{};
+    return src.view(rectX, rectY, rectW, rectH);
+}
 
-    ac::core::Image dst{ intersectW, intersectH, src.channels(), src.type() };
-    detail::crop(src, dst, intersectX, intersectY);
+ac::core::Image ac::core::extract(const Image& src, const int channel, const int n) noexcept
+{
+    if (src.empty() || channel >= src.channels() || channel < 0 || n <= 0) return Image{};
+    if (channel == 0 && n >= src.channels()) return src;
+
+    ac::core::Image dst{ src.width(), src.height(), std::min(src.channels() - channel, n), src.type() };
+
+    for (int i = 0; i < dst.height(); i++)
+        for (int j = 0; j < dst.width(); j++)
+            std::memcpy(dst.pixel(j, i), src.pixel(j, i) + channel * src.elementSize(), dst.pixelSize());
+
+    return dst;
+}
+
+ac::core::Image ac::core::insert(const Image& src, const Image& image, const int channel) noexcept
+{
+    if (src.empty() || image.empty() || channel > src.channels() || channel < 0 ||
+        image.width() != src.width() || image.height() != src.height() || image.type() != src.type())
+        return src;
+
+    ac::core::Image dst{ src.width(), src.height(), src.channels() + image.channels(), src.type()};
+
+    auto step1 = channel * src.elementSize();
+    auto step2 = image.pixelSize();
+    auto step3 = src.pixelSize() - step1;
+
+    for (int i = 0; i < dst.height(); i++)
+        for (int j = 0; j < dst.width(); j++)
+        {
+            auto dp = dst.pixel(j, i);
+            auto sp = src.pixel(j, i);
+            auto ip = image.pixel(j, i);
+
+            if (step1 > 0)
+            {
+                std::memcpy(dp, sp, step1);
+                dp += step1;
+                sp += step1;
+            }
+
+            std::memcpy(dp, ip, step2);
+            dp += step2;
+
+            if (step3 > 0) std::memcpy(dp, sp, step3);
+        }
 
     return dst;
 }

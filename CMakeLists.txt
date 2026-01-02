@@ -31,7 +31,9 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set_property(CACHE CMAKE_INSTALL_PREFIX PROPERTY VALUE "${TOP_DIR}/install")
 endif()
 
-include(${CMAKE_DIR}/CheckCompiler.cmake)
+include(GNUInstallDirs)
+
+include(${CMAKE_DIR}/CheckCompilerSIMD.cmake)
 
 option(AC_SHARED_LIB "build as a shared library" OFF)
 option(AC_CORE_WITH_EIGEN3 "build core with eigen3" OFF)
@@ -58,7 +60,6 @@ option(AC_BUILD_BINDING_PYTHON "build python binding for core" OFF)
 option(AC_TOOLS_BENCHMARK "build benchmark" OFF)
 option(AC_TEST_UTIL "build util module test" OFF)
 option(AC_TEST_VIDEO "build video module test" OFF)
-option(AC_TEST_WASM "build wasm test" OFF)
 option(AC_ENABLE_LTO "enable LTO" OFF)
 option(AC_ENABLE_STATIC_CRT "enable static link crt" OFF)
 option(AC_DISABLE_RTTI "disable rtti" OFF)
@@ -178,5 +179,5 @@ install(
     EXPORT AC
     FILE ACConfig.cmake
     NAMESPACE AC::
-    DESTINATION ac/cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ac
 )
